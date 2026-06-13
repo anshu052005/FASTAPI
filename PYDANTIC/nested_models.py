@@ -22,6 +22,25 @@ patient_dict = {'name': 'nitish', 'gender': 'male', 'age': 35, 'address': addres
 patient1 = Patient(**patient_dict)
 
 
+# This temp here shows that the patient1 object is being converted to a dictionary using the model_dump() method. The model_dump() method is a built-in method in Pydantic that converts a Pydantic model instance into a dictionary. This is useful for serialization, debugging, or when you need to work with the data in a standard Python dictionary format.
+temp = patient1.model_dump()
+temp1 = patient1.model_dump_json() # this will convert the patient1 object to a JSON string format
+
+temp2 = patient1.model_dump_json(include= {'name', 'age'}) # this will include only the name and age fields in the JSON output
+temp3 = patient1.model_dump_json(exclude= {'address'}) # this will exclude the address field from the JSON output
+
+
+print(temp)
+print(type(temp))
+
+print(temp1)
+print(type(temp1))
+
+print(temp2)
+print(type(temp2))
+
+print(temp3)
+print(type(temp3))
 
 
 
