@@ -8,7 +8,7 @@
 from fastapi import FastAPI , Path , HTTPException , Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel , Field, computed_field
-from typing import Annotated , Literal
+from typing import Annotated , Literal, Optional
 import json
 
 app= FastAPI()
@@ -49,7 +49,14 @@ class Patient(BaseModel):
 # Ab hum apna endpoint banayenge jisme hum patient data ko load karenge ek JSON file se aur usko return karenge. Iske liye hum ek helper function load_data() banayenge jo 'patients.json' file se data load karega aur usko return karega. Phir hum ek endpoint banayenge '/view' jisme hum load_data() function ko call karenge aur uska result return karenge.
 
 
-
+# Yaha pe hum ek aur pydantic model banayenge jiska naam hoga PatientUpdate. Ye model update ke liye use hoga jisme hum optional fields define karenge jisse ki user sirf unhi fields ko update kar sake jo wo chahte hain. Isme humne id field ko exclude kiya hai kyunki id ko update nahi karna chahiye. Iske alawa hum
+class PatientUpdate(BaseModel):
+    name: Annotated[Optional[str] , Field(None , max_length=100, description="Full name of the patient, max 100 characters")]
+    city: Annotated[Optional[str] , Field(None , description= 'City of residence' , example = 'Gurgaon')]
+    age: Annotated[Optional[int] , Field(None , gt=0 , lt=120, description="Age of the patient and  must be between 1 and 120")]
+    gender: Annotated[Optional[ Literal['male' , 'female' , 'other']] , Field(None , description= 'Gender of the patient' , example = 'male')]
+    height: Annotated[Optional[float] , Field(None , description= 'Height of the patient in centimeters' , example = 172.5)]
+    weight: Annotated[Optional[float] , Field(None , gt=0, description ="Weight of the patient in kilograms and must be greater than zero" , example = 75.2)]
 
 def load_data():
     with open('patients.json' , 'r') as f:
@@ -124,3 +131,64 @@ def create_patient(patient: Patient): # Here we are using the Patient model as a
     save_data(data)
 
     return JSONResponse( status_code=201 , content = {'message' : 'Patient created successfully' , 'patient_id' : patient.id})
+
+
+@app.put('/edit/{patient_id}')
+def update_patient(patient_id : str , patient_update: PatientUpdate):
+    # load existing data
+    data = load_data()
+
+    # check if patient ID exists
+    if patient_id not in data:
+        raise HTTPException(status_code=404 , detail = 'Patient not found')
+
+    # update the patient data with the provided fields
+
+    #hume poore data me se patient_id ke corresponding data ko nikalna hai aur usko update karna hai. Iske liye hum existing_patient_data variable me data[patient_id] ko store karenge. Phir hum patient_update object ko dictionary me convert karenge using model_dump() method with exclude_unset=True option. Ye option ensure karta hai ki sirf wo fields include hon jo explicitly set kiye gaye hain PatientUpdate model me, aur unset fields ko exclude kar dega. Isse hum sirf unhi fields ko update karenge jo user ne provide kiye hain, aur baaki fields unchanged rahenge. Phir hum existing_patient_data me update karenge using a for loop that iterates over the items in patient_update_dict and updates the corresponding fields in existing_patient_data. Finally, we save the updated data back to the JSON file using save_data() function and return a JSONResponse indicating that the patient was updated successfully along with the patient_id.
+    existing_patient_info = data[patient_id]
+    
+    # this will convert the patient_update object to a dictionary format and exclude unset fields tells use that we only want to include fields that have been explicitly set in the PatientUpdate model. This is important because we want to update only the fields that the user has provided in the request, and leave the other fields unchanged. By excluding unset fields, we ensure that we don't accidentally overwrite existing data with default values or None for fields that were not included in the update request.
+    patient_update_dict = patient_update.model_dump(exclude_unset=True) 
+
+    # yaha pe hum existing_patient_data me update karenge using a for loop that iterates over the items in patient_update_dict and updates the corresponding fields in existing_patient_data. Finally, we save the updated data back to the JSON file using save_data() function and return a JSONResponse indicating that the patient was updated successfully along with the patient_id.
+    for field, value in patient_update_dict.items():
+        existing_patient_info[field] = value
+
+    
+    # ab seen aisa hai ki agar humari height aur weight update hui hai to hamara bmi bhi change ho jayega 
+    # isliye pehle hum iss existing_patient_info ka pydantic model create karenge jisse ki humara bmi calculate ho sake aur fir usko update karenge existing_patient_data me
+
+    #existing_patient_info -> pydantic object -> updated bmi + verdict
+    # hamare pydantic class me id field hai jo ki required hai aur hamare existing_patient_info me nahi hai isliye hum usko add karenge before creating the pydantic object
+    existing_patient_info['id'] = patient_id
+    patient_pydandic_obj = Patient(**existing_patient_info)
+    #-> pydantic object -> dict
+    existing_patient_info = patient_pydandic_obj.model_dump(exclude='id')
+
+    # add this dict to data
+    data[patient_id] = existing_patient_info
+
+    # save data
+    save_data(data)
+
+    return JSONResponse(status_code=200, content={'message':'patient updated'})
+    
+
+
+@app.delete('/delete/{patient_id}')
+def delete_patient(patient_id : str):
+
+    # load existing data
+    data = load_data()
+
+    # check if patient ID exists
+    if patient_id not in data:
+        raise HTTPException(status_code=404 , detail = 'Patient not found')
+
+    # delete the patient data
+    del data[patient_id]
+
+    # save the updated data back to the JSON file
+    save_data(data)
+
+    return JSONResponse(status_code=200 , content = {'message' : 'Patient deleted successfully' , 'patient_id' : patient_id})
